@@ -22,6 +22,7 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.kitodo.client.queue.FinalizeTaskQueueMessage;
+import org.kitodo.client.queue.KitodoScriptQueueMessage;
 import org.kitodo.client.queue.TaskQueueMessage;
 import org.kitodo.client.queue.TaskActionQueueMessage;
 
@@ -45,7 +46,7 @@ public class KitodoActiveMQClient {
         try {
             String url = args[0], queue = args[1], taskId = args[2], message = args[3];
 
-            TaskQueueMessage taskQueue;
+            Object taskQueue;
             switch (queue) {
                 case "FinalizeTaskQueue":
                     taskQueue = new FinalizeTaskQueueMessage(taskId, message);
@@ -59,21 +60,34 @@ public class KitodoActiveMQClient {
                         ((TaskActionQueueMessage) taskQueue).setCorrectionTaskId(args[5]);
                     }
                     break;
+                case "KitodoScriptQueue":
+                    taskQueue = new KitodoScriptQueueMessage(taskId, message, args[4]);
+                    break;
                 default:
                     throw new IllegalArgumentException("Unknown queue '" + queue + "'");
             }
 
-            logger.debug("Send message '" + taskQueue + "' to url '" + url + "' destination queue '" + taskQueue.getQueueName() + "'");
-
             Connection connection = new ActiveMQConnectionFactory(url).createConnection();
             connection.start();
             Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-            Destination destination = session.createQueue(taskQueue.getQueueName());
-            MessageProducer producer = session.createProducer(destination);
-            producer.setDeliveryMode(DeliveryMode.PERSISTENT);
-            producer.send(taskQueue.createMessage(session));
 
-            logger.info("Sending of message for taskId='" + taskId + "' was successful");
+            if (taskQueue instanceof TaskQueueMessage) {
+                TaskQueueMessage taskQueueMessage = (TaskQueueMessage) taskQueue;
+                logger.debug("Send message '" + taskQueue + "' to url '" + url + "' destination queue '" + taskQueueMessage.getQueueName() + "'");
+                Destination destination = session.createQueue(taskQueueMessage.getQueueName());
+                MessageProducer producer = session.createProducer(destination);
+                producer.setDeliveryMode(DeliveryMode.PERSISTENT);
+                producer.send(taskQueueMessage.createMessage(session));
+
+                logger.info("Sending of message for taskId='" + taskId + "' was successful");
+            } else if (taskQueue instanceof KitodoScriptQueueMessage) {
+                KitodoScriptQueueMessage kitodoScriptQueueMessage = (KitodoScriptQueueMessage) taskQueue;
+                logger.debug("Send message '" + taskQueue + "' to url '" + url + "' destination queue '" + kitodoScriptQueueMessage.getQueueName() + "'");
+                Destination destination = session.createQueue(kitodoScriptQueueMessage.getQueueName());
+                MessageProducer producer = session.createProducer(destination);
+                producer.setDeliveryMode(DeliveryMode.PERSISTENT);
+                producer.send(kitodoScriptQueueMessage.createMessage(session));
+            }
 
             session.close();
             connection.close();
